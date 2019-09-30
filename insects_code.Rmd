@@ -1,0 +1,1009 @@
+---
+title: "Entomology"
+author: "490390494, 480555188, 490389568"
+subtitle: "Project 2 - Monday 9-11am Carslaw 353"
+date: "The University of Sydney | DATA1901 | April 2019"
+header-includes:
+   - \usepackage{animate}
+output:
+  # rmdformats::readthedown:
+  prettydoc::html_pretty:
+    theme: 'cayman'
+    highlight: 'github'
+    fig_caption: true
+    df_print: paged
+    number_sections: true
+    self_contained: true
+    # theme: journal
+    css: #style.css
+    # - https://use.fontawesome.com/releases/v5.0.6/css/all.css
+    toc: true
+    toc_depth: 3
+    # toc_float: true
+    # code_folding: hide
+---
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(message = F)
+```
+
+
+
+<br>
+
+# Executive Summary
+Aim of this report - to gain a clearer idea of where the collection originates:
+
+ * Butterflies - How does the collection reflect their global distribution and characteristics?
+ * Flies - A brief glimpse
+
+<br />
+
+Main discoveries:
+
+ * Butterflies are diversely distributed but most commonly found in tropical regions with warm, temperate climates
+ * The Morpho genus of butterflies is located exclusively in the Americas, whilst the Vanessa and Argynnis genera are more globally distributed
+ * The Lycaenidae family of butterflies prefers hotter climates than both the Papilionidae and Nymphalidae families, being primarily located in rainforests
+
+
+
+<br>
+
+<br>
+
+# Initial Data Analysis (IDA)
+
+```{r, message = F, warning = F, include = F}
+# Loading required packages without warnings or messages
+require(knitr)
+require(kableExtra)
+require(readxl)
+require(tidyr)
+require(stringr)
+require(tidyverse)
+require(janitor)
+require(dplyr)
+require(skimr)
+require(maps)
+require(prettydoc)
+# require(rmdformats)
+require(mapview)
+require(leaflet)
+require(plotly)
+require(readr)
+require(data.tree)
+require(treemap)
+require(networkD3)
+require(ggraph)
+require(igraph)
+require(viridis)
+require(circlepackeR)
+require(htmlwidgets)
+require(gganimate)
+require(gifski)
+require(gapminder)
+require(ggplot2)
+require(magick)
+require(weathermetrics)
+require(rworldmap)
+require(dichromat)
+require(reticulate)
+```
+
+
+
+## The 5 Stages of Data Preparation
+
+
+<br />
+
+1. Importing the Excel spreadsheet
+
+```{r, message = F, warning = F, results = 'hide'}
+# Importing the data sets from Excel
+entomology1_og = read_excel("ProvenanceOfEntomology.xlsx",
+    sheet = "By location", col_types = c("guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "text", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess"))
+
+entomology2_og = read_excel("ProvenanceOfEntomology.xlsx",
+    sheet = "List by species COMPLETE 2017", col_types = c("guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "text", "guess"))
+```
+
+2. Preparing the two data sets
+
+```{r, message = F, warning = F, results = 'hide'}
+      ## Wrangling 'entomology1_og' into 'entomology1'
+
+# Removing the "LocLocationCode" and "LocLevel3" column
+entomology1 = entomology1_og[, c(1, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)]
+
+# Renaming columns
+names(entomology1)[c(2, 3, 14)] = c("Storage Type", "Building", "Total Number of Specimens")
+
+# Splitting the "Building" and "Room" columns into their code and name
+entomology1 = entomology1 %>%
+  tidyr::separate(col = Building,
+                  into = c("Building Code", "Building Name"),
+                  sep = "-",
+                  fill = "left") %>%
+  tidyr::separate(col = Room,
+                  into = c("Room Code", "Room Name"),
+                  sep = "-",
+                  fill = "left")
+
+# Changing the NA's in the "Room Code" column to "Historic"
+entomology1$`Room Code`[is.na(entomology1$`Room Code`)] = "Historic"
+
+# Removing "Room" from the "Room Code" column, and "Cabinet" from "Cabinet" column
+entomology1 = entomology1 %>%
+  mutate(`Room Code` = str_remove(`Room Code`, "Room")) %>%
+  mutate(Cabinet = str_remove(Cabinet, "Cabinet"))
+
+# Renaming columns again
+names(entomology1)[c(7, 8)] = c("Cabinet Code", "Drawer Number")
+
+# Changing the variable names into 'camel case'
+entomology1 = janitor::clean_names(entomology1)
+
+# Removing the variable "type_specimen" from 'entomology1'
+entomology1 = select(entomology1, -type_specimen)
+
+# Removing duplicate rows
+entomology1[!duplicated(entomology1), ]
+
+
+
+      ## Wrangling 'entomology2_og' into 'entomology2'
+
+# Removing the blank column
+entomology2 = entomology2_og[, c(1, 2, 3, 5, 6, 7, 8, 9, 10, 11)]
+
+# Renaming columns
+names(entomology2)[c(1, 2, 3, 6)] = c("Room Code", "Cabinet Code",
+                                      "Drawer Number",
+                                      "Number of Specimens")
+
+# Replacing "[empty]", "`", "[not identified]" and "[on display]" with NA's
+
+entomology2[entomology2 == "[empty]"] = NA
+entomology2[entomology2 == "`"] = NA
+entomology2[entomology2 == "[not identified]"] = NA
+entomology2[entomology2 == "[on display]"] = NA
+
+# Changing the variable names into 'camel case'
+entomology2 = janitor::clean_names(entomology2)
+```
+
+3. Merging into one
+
+```{r, message = F, warning = F, results = 'hide'}
+      ## Merging the two data frames into 'entomology'
+
+# Changing the class of 'entomology1' and 'entomology2' to data frame
+entomology1 = data.frame(entomology1)
+entomology2 = data.frame(entomology2)
+
+# Copying the "room_code" and "cabinet_code" variables to new columns
+entomology2 = entomology2 %>%
+  mutate(room_code_copy = room_code) %>%
+  mutate(cabinet_code_copy = cabinet_code)
+
+# Changing the "room_code" and "cabinet_code" variables from character to numeric types
+entomology1[, 5] = as.numeric(as.factor(entomology1[, 5]))
+entomology2[, 1] = as.numeric(as.factor(entomology2[, 1]))
+
+entomology1[, 7] = as.numeric(as.factor(entomology1[, 7]))
+entomology2[, 2] = as.numeric(as.factor(entomology2[, 2]))
+
+# Merging!!
+entomology = left_join(entomology2, entomology1, by = c("room_code", "cabinet_code", "drawer_number"))
+
+# Re-arranging the columns so the actual "room_code" and "cabinet_code" is preserved
+entomology = entomology[, c(4, 5, 7, 19, 8, 20, 21, 22, 18, 6, 24, 23, 14, 15, 16, 11, 17, 12, 3, 26, 25, 9, 10, 13)]
+
+# Replacing NA key words with NA's
+entomology[, 1:19][entomology[, 1:19] == "Empty"] = NA
+entomology[, 21:24][entomology[, 21:24] == "Empty"] = NA
+
+entomology[, 1:19][entomology[, 1:19] == "[on display]"] = NA
+entomology[, 21:24][entomology[, 21:24] == "[on display]"] = NA
+
+entomology$locality[entomology$locality == "[no locality]"] = NA
+entomology$locality[entomology$locality == "[unknown locality]"] = NA
+
+# Moving a specimen to another cabinet
+entomology[18][entomology[1] == "Belongs in 10B drawer 7 [not identified]"] = "10B"
+entomology[1][entomology[1] == "Belongs in 10B drawer 7 [not identified]"] = NA
+
+# Accounting for NA's in "building_name" and "room_name"
+entomology$building_name[entomology$room_code_copy == "Historic"] = "Elizabeth Bay House"
+entomology$room_name[entomology$room_code_copy == "Historic"] = "Library"
+entomology$building_name[entomology$room_code_copy == "111"] = "Badham Building"
+entomology$room_name[entomology$room_code_copy == "111"] = "Macleay Entomology store"
+entomology$building_code[entomology$room_code_copy == "111"] = "A16"
+
+# Changing NA's in "number_of_specimens" and "total_number_of_specimens" to 0
+entomology$number_of_specimens[is.na(entomology$number_of_specimens) == TRUE] = 0
+entomology$total_number_of_specimens[is.na(entomology$total_number_of_specimens) == TRUE] = 0
+
+# Changing the variables to their appropriate type
+entomology$number_of_specimens = as.numeric(as.character(entomology$number_of_specimens))
+
+# Removing an inconsistent row
+entomology = subset(entomology, number_of_specimens != 89225)
+
+# Changing values containing "?", "[illegible]" and "[Historic drawer]" to NA and "Rob Blackburn" to "Robert Blackburn"
+entomology = entomology %>% 
+  mutate_if(is.character, function(x) {
+                        gsub("\\?", NA, x)
+    })
+entomology = entomology %>% 
+  mutate_if(is.character, function(x) {
+                        gsub("\\[illegible]", NA, x)
+    })
+entomology = entomology %>% 
+  mutate_if(is.character, function(x) {
+                        gsub("\\[empty]", NA, x)
+    })
+entomology = entomology %>% 
+  mutate_if(is.character, function(x) {
+                        gsub("\\[Historic drawer]", NA, x)
+    })
+entomology = entomology %>% 
+  mutate_if(is.character, function(x) {
+                        gsub("Rob Blackburn", "Robert Blackburn", x)
+    })
+
+# Changing the column names
+  # "order.x" --> "order_indiv", 
+  # "order.y" --> "order_drawer", 
+  # "family.x" --> "family_indiv", 
+  # "family.y" --> "family_drawer", 
+  # "sub_family" --> "sub_family_drawer", 
+  # "i_d" --> "id", 
+  # "number_of_specimens" --> "num_indiv_specimens", 
+  # "total_number_of_specimens" --> "num_drawer_specimens",
+  # "room_code_copy" --> "room_code", 
+  # "cabinet_code_copy" --> "cabinet_code"
+names(entomology)[c(3, 4, 5, 6, 7, 8, 10, 11, 16, 18)] = c("order_indiv", "order_drawer", "family_indiv", "family_drawer", "sub_family_drawer", "id", "num_indiv_specimens", "num_drawer_specimens", "room_code", "cabinet_code")
+```
+
+4. Inserting taxonomic & location API data 
+
+```{r, message = F, warning = F, results = 'hide'}
+      ## Merging the given 'taxonomyData' with 'entomology' to add the GBIF API data
+
+# Importing 'taxonomyData' as 'taxonomy'
+taxonomy = readr::read_csv("taxonomyData.csv")
+
+# Changing the "user_supplied_name" and "name_in_label" variables from factor to character types
+taxonomy$user_supplied_name = as.character(taxonomy$user_supplied_name)
+entomology$name_in_label = as.character(entomology$name_in_label)
+
+# Merging...
+entomology = left_join(entomology, taxonomy, by = c("name_in_label" = "user_supplied_name"))
+
+# Removing the column "submitted_name" and "num_total_specimens"
+entomology = select(entomology, -submitted_name)
+
+# Re-arranging the column order
+entomology = entomology[, c(1, 25, 2, 26:28, 3:4, 29, 5:7, 30:32, 8:24)]
+
+
+
+      ## Merging the given 'locationData' with 'entomology' to add the Google Maps API data
+
+# Importing 'locationData' as 'location'
+location = readr::read_csv("locationData.csv")
+
+# Changing the "uniqueLocation" and "locality" variables from factor to character types
+location$uniqueLocation = as.character(location$uniqueLocation)
+entomology$locality = as.character(entomology$locality)
+
+# Merging...
+entomology = left_join(entomology, location, by = c("locality" = "uniqueLocation"))
+
+# Re-arranging columns
+entomology = entomology[, c(1:3, 37, 33:36, 38:41, 4:32)]
+
+# Removing the "irn" variable
+entomology = select(entomology, -irn)
+
+# Changing the variable types from factor to character if the variable is already assigned as a factor
+entomology = entomology %>% 
+  mutate_if(is.factor, as.character)
+```
+
+5. Extracting useful location data from the address column
+
+```{r, message = F, warning = F, results = 'hide'}
+      ## Extracting a "country_region" column from the "address" column
+
+# Reversing the address around its commas since each country is generally positioned at the end
+reversed_address = sapply(lapply(str_split(entomology$address, ","), rev), paste)
+
+# Extracting each country from 'reversed_address'
+countries = purrr::map_chr(reversed_address, 1)
+
+# Trimming whitespaces
+countries = trimws(countries, "both")
+
+# Cleaning entries with numbers preceding the country
+countries_cleaned = str_match(countries, "^\\d{4}\\s(\\w+)$")
+unique(countries_cleaned) # <-- only "hungary" appears to have this number pattern preceding it
+countries_cleaned = lapply(countries, gsub, pattern = "^\\d{4}\\s(\\w+)$", replacement= "hungary")
+
+# Now looking at the rest of the entries, there are a lot of continents, which is a little too broad for our liking
+check = unique(countries_cleaned) 
+
+# We edited a version of 'check' which we exported as a csv - this was to create a key value pair for replacement of the values
+
+# Importing the csv as 'replacement'
+replacement = read.csv("replacement.csv")
+
+# Creating a vectorised replacement
+vector_replacement <- with(replacement, setNames(replace, original))
+
+# Clean the countries column using the vector
+country_region = countries_cleaned
+for (item in replacement$original) {
+  country_region = sapply(country_region, gsub, pattern = item, replacement = as.character(vector_replacement[item]))
+}
+
+# Binding "country_region" to 'entomology' as a new column
+entomology = cbind(entomology, country_region)
+
+# Moving "country_region" to the 4th index
+entomology = entomology[, c(1:3, 41, 4:40)]
+
+# Replacing "NA"  with NA in the "country_region" column
+entomology$country_region[entomology$country_region == "NA"] = NA
+
+# Changing the variable type of the "country_region" column from factor to character
+entomology$country_region = as.character(entomology$country_region)
+```
+
+
+
+## A Glimpse of the Data Set
+
+```{r}
+# Quick look at 5 rows in the data set
+kable(entomology[928:933, ], "html") %>%
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover")) %>%
+    kableExtra::scroll_box(width = "100%")
+```
+
+</br>
+
+```{r}
+# Size of the data and R's classification of the variables
+str(entomology)
+```
+
+
+
+<br />
+
+## Source of the Data
+
+The data was obtained from Sydney University's Macleay Collection.
+
+**Each row** represents an entomological collection event while **each column** represents its characteristics.
+
+
+
+<br>
+
+## Initial Questions About the Data
+
+<br />
+
+  **1. How large is the data set?**
+
+```{r}
+# Looking at the dimensions of the data
+dim(entomology)
+```
+
+The data set has 41 columns (variables) and 35 602 rows (entries).
+
+<br />
+
+  **2. What countries/regions do the specimens originate from? How many different countries/regions are there?**
+
+```{r}
+# Finding the names of the first and last 5 unique locations, sorted in alphabetical order
+head(sort(unique(entomology$country_region)), n = 5)
+tail(sort(unique(entomology$country_region)), n = 5)
+
+# Finding how many locations there are
+nrow(table(unique(entomology$country_region)))
+```
+
+From above, 125 countries out of 197 have been recorded ranging from Algeria to Zambia.
+
+<br />
+
+  **3. What is the phylogenetic structure of the collection?**
+
+```{r, phylogenetic network}
+# Creating a data set 'entomology_narm_phylo' without NA values and the false kingdom "incertae sedis"
+entomology_narm_phylo = entomology %>%
+  drop_na(kingdom) %>% 
+  drop_na(phylum) %>% 
+  drop_na(class)
+entomology_narm_phylo = subset(entomology_narm_phylo, kingdom != "incertae sedis")
+
+# Creating a phylogenetic path for each specimen
+entomology_narm_phylo$pathString = paste("Life", 
+                            entomology_narm_phylo$kingdom, 
+                            entomology_narm_phylo$phylum, 
+                            entomology_narm_phylo$class,
+                            sep = "/")
+
+
+# Creating a data set 'entomology_narm_phylo_deeper' that goes into the family level
+entomology_narm_phylo_deeper = entomology_narm_phylo %>%
+  drop_na(order) %>% 
+  drop_na(family)
+
+# Creating a data set 'family_summary' with the number of specimens for each order
+family_summary = entomology_narm_phylo_deeper %>% 
+  group_by(family) %>%
+  summarise(num_family = sum(num_indiv_specimens))
+
+# Adding the "num_family" column to 'entomology_narm_phylo_deeper'
+entomology_narm_phylo_deeper =
+left_join(entomology_narm_phylo_deeper, family_summary)
+
+# Creating a phylogenetic path for each specimen
+entomology_narm_phylo_deeper$pathString = paste("Life",
+                                            entomology_narm_phylo_deeper$kingdom,
+                                            entomology_narm_phylo_deeper$phylum,  
+                                            entomology_narm_phylo_deeper$class,
+                                            entomology_narm_phylo_deeper$order,
+                                            entomology_narm_phylo_deeper$family,
+                                            sep = "/")
+
+
+# Creating the 'life_family' data tree structure
+life_family = data.tree::as.Node(entomology_narm_phylo_deeper)
+
+# Circle packing of the phylogenetic path to family, coloured by depth
+family_pack = circlepackeR(life_family, size = "num_family", color_min = "RGB(0,115,255)", color_max = "RGB(255,0,124)")
+
+# Saving 'family_pack' as an html widget
+htmlwidgets::saveWidget(as_widget(family_pack), file = "phylowidget.html")
+```
+
+<iframe src="phylowidget.html" style="position:absolute;height:100%;width:100%;"></iframe>
+<br/><br/><br/><br/><br/><br/><br/><br/>/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/>
+
+So it is clear from above that the largest number of specimens in the collection follow the following phylogenetic path:
+
+- Kingdom: Animalia
+- Phylum: Anthropoda
+- Class: Insecta
+- Order: Coleoptera
+- Family: Curculionidae
+
+This corresponds to one of the largest animal families in taxonomy. Namely plant feeding beetles:
+
+<center>
+![*Caption:* A common leaf Weevil of the Curculiondae family](Beetle.jpg)
+</center>
+
+<br/>
+
+This phylogenetic structure is further evident in the radial tree network below:
+
+```{r}
+# Creating the 'life_class' data tree structure
+life_class = data.tree::as.Node(entomology_narm_phylo)
+
+# Creating a list structure of 'life'
+life_class_list = ToListExplicit(life_class, unname = TRUE)
+
+
+      ## Making custom colour arrays
+
+# Node circumference
+colorVector_stroke = c(rep("red", 1), rep("black", 6), rep("red", 28), rep("black", 60))
+jsarray_stroke = paste0('["', paste(colorVector_stroke, collapse = '", "'), '"]')
+nodeStrokeJS = JS(paste0('function(d, i) { return ', jsarray_stroke, '[i]; }'))
+
+# Node fill
+colorVector_colour = c(rep("white", 1), rep("RGBA(0,0,0,0.59)", 6), rep("RGBA(197,0,0,0.62)", 28), rep("RGBA(0,5,253,0.53)", 60))
+jsarray_colour = paste0('["', paste(colorVector_colour, collapse = '", "'), '"]')
+nodeColourJS = JS(paste0('function(d, i) { return ', jsarray_colour, '[i]; }'))
+
+# Text
+colorVector_text = c(rep("red", 1), rep("black", 6), rep("#ccc", 28), rep("blue", 60))
+jsarray_text = paste0('["', paste(colorVector_text, collapse = '", "'), '"]')
+textColourJS = JS(paste0('function(d, i) { return ', jsarray_text, '[i]; }'))
+
+# Trace lines
+colorVector_link = c(rep("#25D80E", 1), rep(
+"RGBA(0,0,0,0.59)", 5), rep("#25D80E", 1), rep(
+"RGBA(0,0,0,0.59)", 27), rep("#25D80E", 1), rep(
+"RGBA(0,0,0,0.59)", 60))
+jsarray_link = paste0('["', paste(colorVector_link, collapse = '", "'), '"]')
+linkColourJS = JS(paste0('function(d, i) { return ', jsarray_link, '[i]; }'))
+
+# Radial phylogenetic node network up to class
+radialNetwork(life_class_list,
+    linkColour = linkColourJS,
+    nodeColour = nodeColourJS,
+    nodeStroke = nodeStrokeJS,
+    textColour = textColourJS,
+    fontSize = 15)
+```
+
+Above, the most common path in the network, towards the Insecta class, is highlighted in green.
+
+<br />
+
+**4. What is the geographical distribution of the collection?**
+
+```{r, warning=F}
+# Creating a subset 'entomology_narm_spatial' without NA values and the false kingdom "incertae sedis"
+entomology_narm_spatial = entomology %>% 
+  drop_na(kingdom) %>% 
+  drop_na(lon) %>% 
+  drop_na(lat) 
+entomology_narm_spatial = subset(entomology_narm_spatial, kingdom != "incertae sedis")
+
+# Creating a new column "kingdom_factor" as a factor type of the kingdom vector
+entomology_narm_spatial$kingdom_factor = factor(entomology_narm_spatial$kingdom)
+
+# Creating a layer of the world map
+mapWorld = borders("world", colour = "#00AFD9", fill = "white")
+
+# Animated spatial plot of the distribution of specimens with different kingdoms
+animated_kingdoms = 
+  ggplot(entomology_narm_spatial, 
+         aes(x = entomology_narm_spatial$lon, 
+             y = entomology_narm_spatial$lat, 
+             colour = kingdom_factor)) +   
+  mapWorld + geom_point(size = 1.5) + 
+  xlab("") + ylab("") + 
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(), 
+        plot.background = element_rect(fill = "white"), 
+        panel.background = element_rect(fill = "#DFF7F1"), 
+        axis.ticks = element_blank(), 
+        axis.text = element_blank(), 
+        plot.caption = element_text(hjust = 0.5, colour = "black", size = rel(1.6))) + 
+  labs(colour = "Kingdoms\n", caption = "The Global Distribution of Specimens") + 
+  transition_manual(kingdom_factor) 
+
+# Printing it to standard output
+print(animated_kingdoms)
+
+# Converting it manually to .png and embedding below
+
+# Making a new colour palette
+colourPalette = colfunc = colorRampPalette(c("lightsteelblue", "midnightblue"))
+colourPalette = colfunc(6751)
+
+# Creating a frequency table
+freq = as.data.frame(table(entomology$country_region))
+
+# Creating the data sets 'countries' and 'insectMap'
+countries = data.frame(country = freq$Var1,
+                        DistributionOfInsects = freq$Freq)
+insectMap = joinCountryData2Map(countries, joinCode = "NAME",
+                              nameJoinColumn = "country")
+
+# Create a world shaped window
+mapDevice('x11')
+
+# Plotting chloropleth
+mapCountryData(insectMap, nameColumnToPlot = "DistributionOfInsects", catMethod = "fixedWidth", numCats = 151, missingCountryCol = "white", colourPalette = colourPalette, borderCol = "midnightblue")
+```
+
+<center>
+<div style="out.width = '160%'">
+![](Kingdom.png)
+</div>
+</center>
+
+From the animated graph above it is clear that the collection has a strong diversity of locations. In particular:
+
+- Australia
+- Europe
+- and North America
+
+are the most geographically populated regions of the collection.
+
+</br>
+
+
+
+## Possible Issues with the Data
+
+- **Spelling errors and missing values** populate the data set, resulting in incorrectly mapped GPS coordinates whilst complicating our the final conclusions - we explicitly target this aspect of the data throughout the contents of this report
+
+```{r}
+table(is.na(entomology))
+```
+489 949 out of 1 459 682 to be precise
+
+- **The age of the recorded data** has a bearing on its accuracy, as the classification of specimens and localities have shifted dramatically due to taxonomic developments and colonisation since the collection beginnings in the 1760s
+- **The sample size** of the data set is not large enough to make reliable conclusions about the population of entomological specimens around the world
+
+
+
+<br />
+
+## Domain Knowledge
+
+**Taxonomy** is the scientific classification of things. Classification is done by organising biological organisms into categories based on similar characteristics. These groups are then ranked into what is known as the taxonomic hierarchy which is represented in the image below:
+
+<center>
+<div style="width:600px; height:600px">
+![*Caption:* The Taxonomic Heirarchy](ClassificationScheme.jpg)
+</div>
+</center>
+
+One example of a phylogenetic path along the taxonomic hierarchy includes that of a common sunflower:
+
+- Kingdom: Plantae
+- Phylum: Angiosperms
+- Class: Eudicots
+- Order: Asterales
+- Family:	Asteraceae
+- Genus: Bidens
+- Species: Bidens torta
+
+</br>
+
+**Butterflies** lie within the Lepidoptera order of the Insecta class and are the focus of our project. 
+
+The most common <u>families</u> in descending order include: Nymphalidae, Papilionidae and Lycaenidae. Each of these have their own distinct characteristics and geographical distributions. For example the Nymphalidae family, most commonly referred to as the *Brush-footed butterflies*, are particularly located in the tropics and often exhibit dull colours on their wings such as browns, oranges, yellows and blacks.
+
+<center>
+<div style="width:600px; height:600px">
+![*Caption:* Limenitis camilla of the Nymphalidae family](Butterfly.jpg)
+</div>
+</center>
+Within the Nymphalidae family the most common <u>genera</u> are Morpho, Vanessa, and Argynnis; again, each with their own distinct features. For example, butterflies of the Morpho genus are typically coloured in metallic, shimmering shades of blues and greens and inhabit forests of the Amazon and Atlantic.
+
+
+
+<br>
+
+<br>
+
+# Research Questions
+
+## Butterflies - How does the collection reflect their global distribution and characteristics?
+
+Let's examine the phylogenetic structure of the butterfly. We can do this by looking at the Lepidoptera order since it encompasses butterflies.
+
+```{r, warning = F}
+# Creating a data set 'entomology_narm_phylo_even_deeper' that goes to into the family level
+entomology_narm_phylo_even_deeper = entomology_narm_phylo %>%
+  drop_na(order) %>% 
+  drop_na(family) %>%
+  drop_na(genus)
+
+# Creating a data set 'genus_summary' with the number of specimens for each order
+genus_summary = entomology_narm_phylo_even_deeper %>% 
+  group_by(genus) %>%
+  summarise(num_genus = sum(num_indiv_specimens))
+
+# Subsetting the data for the Lepidoptera order
+entomology_narm_phylo_even_deeper = subset(entomology_narm_phylo_even_deeper, order == "Lepidoptera")
+
+# Adding the "num_genus" column to 'entomology_narm_phylo_even_deeper'
+entomology_narm_phylo_even_deeper =
+left_join(entomology_narm_phylo_even_deeper, genus_summary)
+
+# Creating a phylogenetic path for each butterfly
+entomology_narm_phylo_even_deeper$pathString = paste("Life",                  entomology_narm_phylo_even_deeper$order,
+                 entomology_narm_phylo_even_deeper$family,
+                 entomology_narm_phylo_even_deeper$genus,
+                      sep = "/")
+
+# Creating the 'life_genus_lep' data tree structure
+life_genus_lep = data.tree::as.Node(entomology_narm_phylo_even_deeper)
+
+# Circle packing of the phylogenetic path to genus coloured by depth
+genus_pack_lep = circlepackeR(life_genus_lep, size = "num_genus", color_min = "RGB(255,0,124)", color_max = "RGB(0,115,255)")
+
+# Saving 'genus_pack_lep' as an html widget
+htmlwidgets::saveWidget(as_widget(genus_pack_lep), file = "phylowidget_lep.html")
+```
+
+<iframe src="phylowidget_lep.html" style="position:absolute;height:100%;width:100%;"></iframe>
+<br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/>
+
+It is clear from above that the largest butterfly families in the collection are:
+
+1. Nymphalidae
+2. Papilionidae
+3. Lycaenidae
+
+in descending order. 
+
+But what are these families' geographical distributions respectively? Are there distinct differences in location and concentration?
+
+```{r butterfly family}
+# Creating a subset 'entomology_narm_spatial_bf' without NA values and the false kingdom "incertae sedis"
+entomology_narm_spatial_bf = entomology %>% 
+  drop_na(family) %>% 
+  drop_na(lon) %>% 
+  drop_na(lat) 
+
+# Creating a subset 'entomology_narm_spatial' without NA values and the false kingdom "incertae sedis"
+entomology_narm_spatial_bf = subset(entomology_narm_spatial_bf, family == "Nymphalidae" | family == "Papilionidae" | family == "Lycaenidae")
+
+# Creating a new column "family_factor" as a factor type of the family vector
+entomology_narm_spatial_bf$family_factor = factor(entomology_narm_spatial_bf$family)
+
+# Adding Capricorn and Cancer tropic lines
+cancer = data.frame(y = 23.5, cancer = factor(23.5))
+capricorn = data.frame(x = c(-Inf, Inf), y = -23.5, capricorn = factor(-23.5))
+
+# Animated spatial plot of the distribution of butterfly families
+animated_family_bf = 
+  ggplot(entomology_narm_spatial_bf, 
+         aes(x = entomology_narm_spatial_bf$lon, 
+             y = entomology_narm_spatial_bf$lat, 
+             colour = entomology_narm_spatial_bf$family_factor)) +   
+  mapWorld + geom_point(size = 2) + 
+  xlab("") + ylab("") + 
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(), 
+        plot.background = element_rect(fill = "white"), 
+        panel.background = element_rect(fill = "#DFF7F1"), 
+        axis.ticks = element_blank(), 
+        axis.text = element_blank(), 
+        plot.caption = element_text(hjust = 0.5, colour = "black", size = rel(1.6))) +
+  transition_manual(entomology_narm_spatial_bf$family_factor) +
+  labs(colour = "Families\n", caption = "Largest Bufferfly Families") 
+
+# Add tropical lines of Cancer and Capricorn
+animated_family_bf = animated_family_bf + 
+  geom_hline(aes(yintercept = y, linetype = cancer), data = cancer, show.legend = F) +
+  geom_hline(aes(yintercept = y, linetype = capricorn), data = capricorn, show.legend = F)
+
+# Printing it to standard output
+print(animated_family_bf)
+
+# Converting it manually to 'Bf_family.png' and embedding below
+```
+
+<center>
+<div style="out.width = '160%'">
+![](Bf_family.png)
+</div>
+</center>
+
+As seen in the animated graph above, the **Nymphalidae** family are distributed worldwide but are especially rich in the tropics, as seen in the region between the two horizontal lines above. Butterflies of this family often migrate from northern latitudes such as Canada down to tropical latitudes such as Mexico. This migration path is also evident in the animated graph.
+
+The **Papilionidae** family are also distributed worldwide, with a higher concentration in the tropics as seen above. Butterflies of this family are commonly referred to as the *Swallowtail butterflies* because they are known for the tail-like extensions of their hind wings. <u>FUN FACT</u>: Their colour patterns are very diverse, ranging from yellows and oranges, to greens and blues.
+
+The **Lycaenidae** family is similarly distributed in the graph above but with the least concentration. The Lycaenidae are commonly referred to as the *Gossamer-winged butterflies*. This family is traditionally subdivided into four categories; the blues, the coppers, the hair streaks and the harvesters.
+
+ - Although our data unfortunately doesn't distinguish between these four sub-families, the blues are richest in the Old-World tropics (Africa, Asia and Europe) and north temperate zones, the coppers are especially dominant in north temperate regions, whilst the hair streaks are particularly abundant in New-World tropics (Oceania and Americas). <u>FUN FACT</u>: Their wings are usually brightly coloured and often have false-eye markings which serve as decoys for predators.
+
+</br>
+
+Elaborating forth, let's examine the distribution of Nymphalidae butterflies within its three largest genera: Vanessa, Argynnis and Morpho.
+
+```{r butterfly genus, warning=F ,message=F}
+# Creating a subset 'entomology_narm_spatial_bf_genus' without NA values
+entomology_narm_spatial_bf_genus = entomology %>% 
+  drop_na(genus) %>% 
+  drop_na(lon) %>% 
+  drop_na(lat) 
+
+# Creating a subset 'entomology_narm_spatial' without NA values and the false kingdom "incertae sedis"
+entomology_narm_spatial_bf_genus = subset(entomology_narm_spatial_bf_genus, genus == "Morpho" | genus == "Vanessa" | genus == "Argynnis")
+
+# Creating a new column "genus_factor" as a factor type of the genus vector
+entomology_narm_spatial_bf_genus$genus_factor = factor(entomology_narm_spatial_bf_genus$genus)
+
+# Animated spatial plot of the distribution of butterfly families
+animated_genus_bf = 
+  ggplot(entomology_narm_spatial_bf_genus, 
+         aes(x = entomology_narm_spatial_bf_genus$lon, 
+             y = entomology_narm_spatial_bf_genus$lat, 
+             colour = genus_factor)) +   
+  mapWorld + geom_point(size = 2) + 
+  xlab("") + ylab("") + 
+  theme(panel.border = element_blank(), 
+        panel.grid = element_blank(), 
+        plot.background = element_rect(fill = "white"), 
+        panel.background = element_rect(fill = "#DFF7F1"), 
+        axis.ticks = element_blank(), 
+        axis.text = element_blank(), 
+        plot.caption = element_text(hjust = 0.3, colour = "black", size = rel(1.6))) + 
+  labs(colour = "Genera\n", caption = "Largest Bufferfly Genera of the Nymphalidae Family") + 
+  transition_manual(genus_factor) 
+
+# Printing it to standard output
+print(animated_genus_bf)
+
+# Converting it manually to 'Bf_genus.png' and embedding below
+
+colourPalette = colfunc <- colorRampPalette(c("lavenderblush", "deeppink"))
+colourPalette = colfunc(151)
+
+freq = as.data.frame(table(entomology_narm_spatial_bf$country_region))
+
+countries <- data.frame(country = freq$Var1,
+                        DistributionOfNymphalidae = freq$Freq)
+nymphMap <- joinCountryData2Map(countries, joinCode = "NAME",
+                                nameJoinColumn = "country")
+
+mapDevice('x11')
+
+mapCountryData(nymphMap, nameColumnToPlot="DistributionOfNymphalidae", catMethod = "fixedWidth", numCats = 151,
+               missingCountryCol = "white", colourPalette=colourPalette, borderCol = "maroon4")
+```
+
+<center>
+<div style="out.width = '160%'">
+![](Bf_genus.png)
+</div>
+</center>
+
+As seen in the animated graph and chloropleth above, butterflies of the **Morpho** genus appear to primarily inhabit forests of the Amazon and Atlantic. These are typically coloured in metallic, shimmering shades of blues and greens. 
+
+The **Vanessa** genus are distributed globally, appearing more often in the northern hemisphere. These butterflies cover a broad spectrum in terms of colouration. <u>FUN FACT</u>: They are named after the character Vanessa in Jonathan Swift's poem, "Cadenus and Vanessa", who is referred to as a "nymph" eleven times.
+
+The **Argynnis** genus appears to be highly concentrated in the Americas despite being most commonly found in Europe and Asia. This most likely reflects the unreliability of the data (in terms of sufficiency and completeness), or perhaps a new insight into the location of these butterflies. <u>FUN FACT</u>: Argynnis butterflies are commonly known as the *fritillaries*.
+
+</br>
+
+Now let's discuss the common **habitat temperature** for butterflies in the collection. What is it's spread and does this align with our domain knowledge?
+
+```{r}
+      ## Merging 'entomology' with new temperature data from the OpenWeatherMap API
+
+# Made a subset csv first to go into python
+ent_spatial = entomology_narm_spatial_bf[, c(1:7)]
+write_csv(ent_spatial, "ent_spatial.csv")
+```
+
+```{python}
+# Writing a python script to receive temperature data
+
+run = "false" # So it doesn't run in RStudio
+
+if run == "true":
+    
+    # Importing an http request library and csv read/writer
+    import requests
+    import csv
+
+    # Global empties
+    latitude = []
+    longitude = []
+
+    # Opening the csv file of latitude and longtitude data
+    with open("ent_spatial.csv") as f:
+        ent_spatial = csv_reader = csv.reader(f, delimiter=",")
+
+        for row in ent_spatial:
+            longitude.append(row[5])
+            latitude.append(row[6])
+
+    f.close()
+
+    # Removing the labels from the csv -> they won't parse
+    latitude.pop(0)
+    longitude.pop(0)
+
+    api_key = "b944d73972b0d4a0363d3d74fdd07487"
+
+    i = 0
+    length = len(latitude)
+
+    temps = []
+
+    # Requesting data for each lat/long pair
+    for i in range(length):
+        url = "http://api.openweathermap.org/data/2.5/weather?lat={0}&lon={1}&appid={2}".format(latitude[i], longitude[i], api_key)
+        r = requests.get(url)
+        # Data comes back as dictionaries
+        data = r.json()
+        temps.append(data['main']['temp'])
+        # Progress monitor
+        print("{}/{}".format(i,length))
+
+    print(temps)
+
+    temps.insert(0, "temp")
+
+    # Writing the data to the 'temp3.csv' file
+    with open ("temps3.csv", "w") as f:
+        writer = csv.writer(f)
+        writer.writerow(f)
+
+    f.close()
+```
+
+```{r, message=F}
+# Importing the data set 
+kel_temp = read.csv("temps3.csv")
+kel_temp = setNames(kel_temp, c("temperature"))
+
+# Converting the temperature data from Kelvin to Celcius
+cel_temp = kelvin.to.celsius(kel_temp, 2)
+
+# Appending 'cel_temp' to 'entomology_narm_spatial_bf'
+entomology_narm_spatial_bf = cbind(entomology_narm_spatial_bf, cel_temp)
+```
+
+```{r}
+# Box plot of the habitat temperature distribution of the largest butterfly families
+plot_ly(x = ~entomology_narm_spatial_bf$temperature, type = "box", color = ~entomology_narm_spatial_bf$family_factor) %>%
+  layout(title = "Habitat Temperature Distribution for the Largest Butterfly Families", xaxis = list(title = "Avg Habitat Temperature (degrees Celcius)"))
+```
+
+From the box plot above, it is clear that the **Lycaenidae** family prefers hotter climates than both the Papilionidae and Nymphalidae families which share similar trends. The median habitat temperature for the Lycaenidae family is 26.95 degrees Celsius, 6 degrees Celsius more than the other two families which share a common median of 20.95 degrees Celsius.
+
+The spread of the **Lycaenidae** family is also much greater, with an IQR of 20°C compared to 14°C for the other two.
+
+This reflects their true habitat, being  most commonly found in rainforest climates.
+
+
+<br>
+
+## Flies - A brief glimpse
+
+Similar to our previous examination, but instead now let's take a brief glimpse at the distribution of flies.
+
+```{r, warning = F}
+# Making a new icon and assigning it to the image of a fly
+url_fly = "https://i2.wp.com/freepngimages.com/wp-content/uploads/2014/04/fly_2.png?fit=220%2C220"
+fly = leaflet::makeIcon(url_fly, url_fly, 20, 20)
+
+# Spatial plot of the distribution of flies (order Diptera)
+leaflet(entomology[entomology$order == "Diptera", ], options = leafletOptions(minZoom = 1, maxZoom = 18, worldCopyJump = TRUE)) %>%
+  addProviderTiles("OpenTopoMap") %>%
+  addMarkers(lng = ~lon, lat = ~lat,
+                    icon = fly,
+                    popup = ~paste0(classification_name,
+                             "<br/>Family: ", family,
+                             "<br/>Location: ", locality),
+                    label = ~family)
+```
+
+
+
+<br>
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
+
+
+
+<br>
+
+# References
+
+Animals, A. (2019). Butterfly Families | Different Species and Family of Butterflies. Retrieved from https://animalcorner.co.uk/butterfly-families/
+
+ButterflyCorner.net: Genus: ARGYNNIS. (2019). Retrieved from https://en.butterflycorner.net/Genus-ARGYNNIS.347.0.html
+
+ButterflyCorner.net: Genus: VANESSA. (2019). Retrieved from https://en.butterflycorner.net/Genus-VANESSA.350.0.html
+
+Family Lycaenidae (Gossamer-wing Butterflies) | Butterflies and Moths of North America. (2019). Retrieved from https://www.butterfliesandmoths.org/taxonomy/lycaenidae
+
+Family Nymphalidae (Brush-footed Butterflies) | Butterflies and Moths of North America. (2019). Retrieved from https://www.butterfliesandmoths.org/taxonomy/Nymphalidae
+
+Family Papilionidae (Parnassians and Swallowtails) | Butterflies and Moths of North America. (2019). Retrieved from https://www.butterfliesandmoths.org/taxonomy/Papilionidae
+
+Kitching, R. (1999). Biology of Australian butterflies. Collingwood: CSIRO.
+Morpho Butterflies (Genus Morpho). (2019). Retrieved from https://www.inaturalist.org/taxa/68755-Morpho
+
+Phylum - Definition and Examples | Biology Dictionary. (2019). Retrieved from https://biologydictionary.net/phylum/
+
+Weather API - OpenWeatherMap. (2019). Retrieved from https://openweathermap.org/api
